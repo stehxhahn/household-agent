@@ -107,7 +107,15 @@ h1{font-size:clamp(24px,4vw,34px);font-weight:800;margin:0;text-wrap:balance;let
 .budget-input-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .budget-input-row label{font-size:13px;color:var(--muted);}
 .budget-input-row input{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;width:100px;}
-.budget-input-row select{font-family:'Archivo',sans-serif;font-size:14px;font-weight:600;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;}
+.budget-input-row select{
+  font-family:'Archivo',sans-serif;font-size:14px;font-weight:600;
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+  padding:8px 32px 8px 12px;line-height:1.3;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235c6b6a' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;
+  cursor:pointer;
+}
 .budget-bar-wrap{margin-top:16px;}
 .budget-track{position:relative;height:16px;background:var(--line);border-radius:8px;overflow:hidden;}
 .budget-fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:var(--money);}
@@ -670,8 +678,17 @@ function renderDashboard(data){
     return MONTH_NAMES[parseInt(k.slice(5,7),10)-1] + " " + k.slice(0,4);
   }
 
+  function valuesForKey(key){
+    if(key === "__year__"){
+      const totals = {};
+      ROOM_ORDER.forEach(r=>{ totals[r] = roomMonthKeys.reduce((a,k)=>a+(roomsByMonthKey[k][r]||0),0); });
+      return totals;
+    }
+    return roomsByMonthKey[key] || {};
+  }
+
   function renderRoomsForMonth(key){
-    const vals = roomsByMonthKey[key] || {};
+    const vals = valuesForKey(key);
     const maxVal = Math.max(...ROOM_ORDER.map(r=>vals[r]||0)) || 1;
     document.getElementById("roomsRow").innerHTML = ROOM_ORDER.map(r=>{
       const v = vals[r]||0;
@@ -684,7 +701,10 @@ function renderDashboard(data){
   }
 
   const roomSelect = document.getElementById("roomMonthSelect");
-  roomSelect.innerHTML = roomMonthKeys.map(k=>'<option value="'+k+'">'+monthKeyLabel(k)+'</option>').join("");
+  const yearLabel = roomMonthKeys.length ? roomMonthKeys[0].slice(0,4) : "";
+  roomSelect.innerHTML =
+    '<option value="__year__">Full year '+yearLabel+'</option>' +
+    roomMonthKeys.map(k=>'<option value="'+k+'">'+monthKeyLabel(k)+'</option>').join("");
   const latestRoomKey = roomMonthKeys[roomMonthKeys.length-1];
   roomSelect.value = latestRoomKey;
   renderRoomsForMonth(latestRoomKey);
