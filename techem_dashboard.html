@@ -1,0 +1,850 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Techem Usage</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* layout: header -> KPI dial row -> three stacked daily area charts (shared x-axis) -> monthly bar comparison -> footnote */
+:root{
+  --bg:#eef1ef;
+  --surface:#ffffff;
+  --ink:#152025;
+  --muted:#5c6b6a;
+  --line:#d6dcd9;
+  --heat:#a8623c;
+  --heat-soft:#a8623c33;
+  --hot:#c98a2c;
+  --hot-soft:#c98a2c2e;
+  --cold:#2c7a78;
+  --cold-soft:#2c7a7830;
+  --money:#3d6e4f;
+  --money-soft:#3d6e4f26;
+  --warn:#b4432f;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161a;
+    --surface:#1a2126;
+    --ink:#eceeec;
+    --muted:#92a0a0;
+    --line:#2b3339;
+    --heat:#d98455;
+    --heat-soft:#d9845540;
+    --hot:#e6ad4c;
+    --hot-soft:#e6ad4c38;
+    --cold:#4ba7a3;
+    --cold-soft:#4ba7a33a;
+    --money:#6fbf8b;
+    --money-soft:#6fbf8b33;
+    --warn:#e2694f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161a;
+  --surface:#1a2126;
+  --ink:#eceeec;
+  --muted:#92a0a0;
+  --line:#2b3339;
+  --heat:#d98455;
+  --heat-soft:#d9845540;
+  --hot:#e6ad4c;
+  --hot-soft:#e6ad4c38;
+  --cold:#4ba7a3;
+  --cold-soft:#4ba7a33a;
+  --money:#6fbf8b;
+  --money-soft:#6fbf8b33;
+  --warn:#e2694f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px));
+  padding-block:28px;
+}
+.page{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:28px;}
+.masthead{display:flex;flex-direction:column;gap:4px;}
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+}
+h1{font-size:clamp(24px,4vw,34px);font-weight:800;margin:0;text-wrap:balance;letter-spacing:-.01em;}
+.sub{color:var(--muted);font-size:14px;max-width:62ch;margin:0;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.kpi{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:16px 16px 14px;
+  display:flex;flex-direction:column;gap:6px;
+  min-width:0;
+}
+.kpi-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;display:flex;align-items:center;gap:6px;}
+.kpi-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+.kpi-value{font-family:'IBM Plex Mono',monospace;font-size:clamp(22px,4vw,30px);font-weight:600;font-variant-numeric:tabular-nums;line-height:1;}
+.kpi-unit{font-size:13px;color:var(--muted);font-weight:500;}
+.kpi-delta{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+.kpi-delta.up{color:var(--warn);}
+.kpi-delta.down{color:var(--cold);}
+
+.panel{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:18px 18px 10px;
+}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
+.panel-title{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;}
+.panel-total{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.chart-wrap{width:100%;overflow:visible;}
+.tooltip{
+  position:absolute;pointer-events:none;
+  background:var(--ink);color:var(--bg);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;padding:5px 8px;border-radius:6px;
+  transform:translate(-50%,-115%);white-space:nowrap;
+  opacity:0;transition:opacity .1s ease;z-index:5;
+}
+.chart-host{position:relative;}
+
+.note{
+  display:flex;gap:10px;align-items:flex-start;
+  background:var(--heat-soft);
+  border:1px solid var(--heat);
+  border-radius:12px;padding:12px 14px;
+  font-size:13px;color:var(--ink);
+}
+.note b{color:var(--heat);}
+
+.months{display:flex;gap:18px;align-items:flex-end;height:150px;padding:6px 2px 0;}
+.month-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;}
+.bar{width:100%;max-width:46px;border-radius:5px 5px 2px 2px;background:var(--heat);position:relative;}
+.bar.partial{background-image:repeating-linear-gradient(135deg, var(--heat) 0 6px, var(--heat-soft) 6px 12px);}
+.month-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-variant-numeric:tabular-nums;}
+.month-name{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+
+.acc-row{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);}
+.acc-row:last-child{border-bottom:none;}
+.acc-month{font-size:13px;font-weight:700;}
+.acc-month small{display:block;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
+.acc-bars{display:flex;flex-direction:column;gap:6px;}
+.acc-track{position:relative;height:9px;background:var(--line);border-radius:5px;}
+.acc-zero{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--muted);opacity:.6;}
+.acc-fill{position:absolute;top:0;bottom:0;border-radius:5px;}
+.acc-fill.heat{background:var(--heat);}
+.acc-fill.water{background:var(--cold);}
+.acc-label{font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center;}
+.acc-val{font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:right;white-space:nowrap;min-width:92px;}
+.acc-val .u{color:var(--warn);}
+.acc-val .d{color:var(--money);}
+.acc-total{background:var(--surface);}
+
+.budget-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px;}
+.budget-input-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.budget-input-row label{font-size:13px;color:var(--muted);}
+.budget-input-row input{
+  font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+  padding:6px 10px;width:100px;
+}
+.budget-bar-wrap{margin-top:16px;}
+.budget-track{position:relative;height:16px;background:var(--line);border-radius:8px;overflow:hidden;}
+.budget-fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:var(--money);}
+.budget-marker{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--warn);}
+.budget-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
+
+.bd-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);}
+.bd-seg{height:100%;}
+.bd-legend{display:flex;flex-direction:column;gap:7px;margin-top:12px;}
+.bd-row{display:flex;align-items:center;gap:8px;font-size:12px;}
+.bd-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+.bd-name{flex:1;color:var(--ink);}
+.bd-pct{color:var(--muted);font-family:'IBM Plex Mono',monospace;width:42px;text-align:right;}
+.bd-dkk{font-family:'IBM Plex Mono',monospace;font-weight:600;width:76px;text-align:right;}
+
+footer{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:3px;padding-bottom:6px;}
+footer a{color:var(--muted);}
+
+@media (max-width:560px){
+  .kpi-row{grid-template-columns:1fr;}
+  .budget-grid{grid-template-columns:1fr;}
+  .acc-row{grid-template-columns:52px 1fr;}
+  .acc-val{text-align:left;min-width:0;grid-column:2;}
+}
+</style>
+
+<div class="page">
+  <div class="masthead">
+    <div class="eyebrow">Techem portal &middot; apartment meters</div>
+    <h1>Heating &amp; water usage</h1>
+    <p class="sub">Daily meter reads pulled live from your Techem account via the connected MCP server. Heating is reported in HCA units (heat-cost-allocator ticks, not kWh) &mdash; water in m&sup3;.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--money)"></span>Estimated cost</div>
+      <div class="panel-total">Year-to-date, Jan 1&ndash;Nov 12 2026 &middot; vs. acconto pace</div>
+    </div>
+    <div class="kpi-row" id="costKpiRow" style="margin-bottom:16px;"></div>
+    <div class="panel-total" style="margin-bottom:6px;">What's driving the heating bill</div>
+    <div id="costBreakdown"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--heat)"></span>Acconto vs. actual</div>
+      <div class="panel-total">All of 2026 &middot; 500 DKK/mo heating + 250 DKK/mo water</div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">The &ldquo;heating&rdquo; line billed against your 500 DKK acconto isn&rsquo;t just radiator units &mdash; it also carries hot-water heating energy and the fixed base fee, both of which keep accruing even in months with zero radiator use. That&rsquo;s why summer months still show a cost against it.</p>
+    <div id="acontoRows"></div>
+    <div class="note" style="margin-top:12px;font-size:12px;background:var(--money-soft);border-color:var(--money);">
+      <span>&#128176;</span>
+      <div id="acontoNote"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--warn)"></span>Remaining budget</div>
+      <div class="panel-total">Before you're this far over acconto for the year</div>
+    </div>
+    <div class="budget-input-row">
+      <label for="thresholdInput">Alert threshold</label>
+      <input type="number" id="thresholdInput" value="2000" step="100" min="0">
+      <span style="font-size:13px;color:var(--muted);">DKK over combined acconto, by Dec&nbsp;31</span>
+    </div>
+    <div class="budget-grid" id="budgetKpiRow"></div>
+    <div class="budget-bar-wrap">
+      <div class="budget-track"><div class="budget-fill" id="budgetFill"></div><div class="budget-marker" id="budgetMarker"></div></div>
+      <div class="budget-scale"><span>0 DKK</span><span id="budgetScaleEnd"></span></div>
+    </div>
+    <div class="note" style="margin-top:14px;font-size:12px;" id="budgetNote"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--warn)"></span>Bedroom radiator adjustment</div>
+      <div class="panel-total" id="radiatorMeters"></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">This radiator sits in the most wind-exposed room and runs far hotter than the other three to compensate &mdash; in January it logged 384 units against 183&ndash;204 for everything else. The administrator verbally agreed a 20% reduction on its billed units, but a sense-check against your old Q4 2025 bill couldn't confirm it's actually applied (that bill predates the March swap, so it couldn't show it either way). <b>Everywhere else on this dashboard uses the raw, unreduced number</b> &mdash; conservative until a real bill confirms the discount. The figures below show what the discount would be worth if and when it's confirmed.</p>
+    <div class="kpi-row" id="radiatorKpiRow"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Heating by month &mdash; billed HCA units</div>
+      <div class="panel-total">2026 &middot; no radiator reduction applied, Nov/Dec projected</div>
+    </div>
+    <div class="months" id="monthsRow"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--heat)"></span>Heating &mdash; HCA units / day</div>
+      <div class="panel-total" id="heatTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartHeat"></div><div class="tooltip" id="ttHeat"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--money)"></span>Daily cost &mdash; DKK</div>
+      <div class="panel-total">Last 43 days &mdash; apartment total, not radiator-adjusted</div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartCost"></div><div class="tooltip" id="ttCost"></div></div>
+    <div id="costLegend" style="display:flex;gap:16px;margin:10px 2px 4px;font-size:12px;color:var(--muted);flex-wrap:wrap;"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--hot)"></span>Hot water &mdash; m&sup3; / day</div>
+      <div class="panel-total" id="hotTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartHot"></div><div class="tooltip" id="ttHot"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--cold)"></span>Cold water &mdash; m&sup3; / day</div>
+      <div class="panel-total" id="coldTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartCold"></div><div class="tooltip" id="ttCold"></div></div>
+  </div>
+
+  <footer>
+    <span>Source: Techem MCP server (<code>get_techem_usage</code>) &mdash; monthly totals for Jan&ndash;Oct 2026, daily resolution for the Oct&ndash;Nov detail charts. Pulled Nov 13, 2026.</span>
+    <span>Heating season appears to have started around Oct 18&ndash;19 after a flat summer read; Jan&ndash;Feb 2026 was by far the heaviest heating stretch of the year.</span>
+    <span>Cost rates from your real Q4 2025 statements: 1.624072 DKK/HCA unit, 113.316571 DKK/m&sup3; hot-water energy, 55.835784 DKK/m&sup3; water supply (hot + cold combined), plus a 2,353.07 DKK/year fixed base fee &amp; EED charge &mdash; assumed unchanged for this projection.</span>
+    <span>Per-radiator figures pulled via Techem's "source" aggregation level (one step below the apartment total). The bedroom radiator's promised 20% reduction is NOT applied to any cost, acconto, or budget figure on this page &mdash; see the radiator panel for why, and for what it would be worth once confirmed.</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  // ---- raw daily data, Oct 1 - Nov 12 (detail window; Aug/Sep were flat zero) ----
+  var heat = [
+    ["2026-10-01",0],["2026-10-02",0],["2026-10-03",0],["2026-10-04",0],["2026-10-05",0],
+    ["2026-10-06",0],["2026-10-07",0],["2026-10-08",0],["2026-10-09",0],["2026-10-10",0],
+    ["2026-10-11",0],["2026-10-12",0],["2026-10-13",2],["2026-10-14",0],["2026-10-15",0],
+    ["2026-10-16",0],["2026-10-17",0],["2026-10-18",2],["2026-10-19",15],["2026-10-20",9],
+    ["2026-10-21",6],["2026-10-22",4],["2026-10-23",3],["2026-10-24",1],["2026-10-25",8],
+    ["2026-10-26",4],["2026-10-27",9],["2026-10-28",5],["2026-10-29",5],["2026-10-30",4],
+    ["2026-10-31",5],["2026-11-01",0],["2026-11-02",6],["2026-11-03",2],["2026-11-04",1],
+    ["2026-11-05",5],["2026-11-06",11],["2026-11-07",8],["2026-11-08",5],["2026-11-09",4],
+    ["2026-11-10",3],["2026-11-11",6],["2026-11-12",0]
+  ];
+  var hot = [
+    ["2026-10-01",0.072],["2026-10-02",0.110],["2026-10-03",0.011],["2026-10-04",0.095],["2026-10-05",0.063],
+    ["2026-10-06",0.009],["2026-10-07",0.072],["2026-10-08",0.070],["2026-10-09",0.017],["2026-10-10",0.053],
+    ["2026-10-11",0.082],["2026-10-12",0.100],["2026-10-13",0.166],["2026-10-14",0.090],["2026-10-15",0.0],
+    ["2026-10-16",0.0],["2026-10-17",0.0],["2026-10-18",0.002],["2026-10-19",0.141],["2026-10-20",0.063],
+    ["2026-10-21",0.141],["2026-10-22",0.183],["2026-10-23",0.121],["2026-10-24",0.011],["2026-10-25",0.097],
+    ["2026-10-26",0.090],["2026-10-27",0.137],["2026-10-28",0.093],["2026-10-29",0.144],["2026-10-30",0.089],
+    ["2026-10-31",0.071],["2026-11-01",0.135],["2026-11-02",0.103],["2026-11-03",0.128],["2026-11-04",0.117],
+    ["2026-11-05",0.109],["2026-11-06",0.050],["2026-11-07",0.024],["2026-11-08",0.070],["2026-11-09",0.027],
+    ["2026-11-10",0.135],["2026-11-11",0.069],["2026-11-12",0.016]
+  ];
+  var cold = [
+    ["2026-10-01",0.049],["2026-10-02",0.069],["2026-10-03",0.034],["2026-10-04",0.080],["2026-10-05",0.060],
+    ["2026-10-06",0.016],["2026-10-07",0.068],["2026-10-08",0.051],["2026-10-09",0.012],["2026-10-10",0.054],
+    ["2026-10-11",0.053],["2026-10-12",0.062],["2026-10-13",0.082],["2026-10-14",0.045],["2026-10-15",0.0],
+    ["2026-10-16",0.0],["2026-10-17",0.0],["2026-10-18",0.001],["2026-10-19",0.075],["2026-10-20",0.053],
+    ["2026-10-21",0.094],["2026-10-22",0.071],["2026-10-23",0.055],["2026-10-24",0.019],["2026-10-25",0.014],
+    ["2026-10-26",0.023],["2026-10-27",0.076],["2026-10-28",0.058],["2026-10-29",0.062],["2026-10-30",0.041],
+    ["2026-10-31",0.040],["2026-11-01",0.078],["2026-11-02",0.062],["2026-11-03",0.077],["2026-11-04",0.077],
+    ["2026-11-05",0.067],["2026-11-06",0.036],["2026-11-07",0.024],["2026-11-08",0.060],["2026-11-09",0.026],
+    ["2026-11-10",0.062],["2026-11-11",0.029],["2026-11-12",0.005]
+  ];
+
+  // ---- monthly totals for calendar year 2026 (Jan-Oct from the portal's MONTH resolution;
+  // Nov/Dec built below from the daily data + projection — this is the real settlement window,
+  // since acconto runs Jan-Dec, not just since the heating season started) ----
+  var MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var DAYS_IN_MONTH_2026 = [31,28,31,30,31,30,31,31,30,31,30,31];
+
+  // Bedroom radiator (wind-exposed position, runs far hotter than the other 3): meter
+  // 21090797 through mid-March, replaced by 21170356. Pulled per-radiator via Techem's
+  // "SOURCE" aggregation level, one step below the apartment total — the meter swap shows
+  // up as one source's reading stopping and a new source's reading starting the same month.
+  // The administrator agreed a 20% reduction on this radiator's billed units for its
+  // exposed position, applied here to both the old and new meter's readings alike.
+  // Not yet confirmed in a real bill (see note below) — so the dashboard's primary numbers
+  // assume NO reduction (factor 1.0, conservative) until a post-swap bill confirms it. The
+  // 0.8 "promised" factor is used only for the separate "if confirmed" comparison figures,
+  // never baked silently into the headline cost/acconto/budget numbers.
+  var RADIATOR_FACTOR_ACTIVE = 1.0;
+  var RADIATOR_FACTOR_PROMISED = 0.8;
+  var OLD_METER = "21090797", NEW_METER = "21170356";
+  // {otherUnits: the other 3 radiators combined, bedroomUnits: this radiator, raw}
+  var actualMonths = [
+    {otherUnits:564, bedroomUnits:384, hotVol:2.465, coldVol:2.323}, // Jan
+    {otherUnits:573, bedroomUnits:300, hotVol:1.917, coldVol:1.675}, // Feb
+    {otherUnits:204, bedroomUnits:105, hotVol:2.018, coldVol:2.122}, // Mar — 36 old + 69 new meter
+    {otherUnits:133, bedroomUnits:54,  hotVol:2.100, coldVol:1.942}, // Apr
+    {otherUnits:0,   bedroomUnits:0,   hotVol:2.078, coldVol:2.411}, // May
+    {otherUnits:0,   bedroomUnits:0,   hotVol:1.885, coldVol:2.469}, // Jun
+    {otherUnits:0,   bedroomUnits:0,   hotVol:0.457, coldVol:0.794}, // Jul
+    {otherUnits:0,   bedroomUnits:0,   hotVol:1.693, coldVol:2.134}, // Aug
+    {otherUnits:0,   bedroomUnits:0,   hotVol:1.958, coldVol:1.826}, // Sep
+    {otherUnits:33,  bedroomUnits:49,  hotVol:2.393, coldVol:1.417}  // Oct
+  ];
+  // Nov to-date (12 days) decomposed the same way; 29+22=51, matching the daily-array total.
+  var novBedroomToDate = 22, novOtherToDate = 29;
+
+  // ---- rates, from the real Q4 2025 Techem statements (Koldtvandsudgifter + Varmeudgifter) ----
+  // Hot water is billed twice: a water-volume charge (same rate as cold) plus an energy
+  // surcharge for heating it. Cold water only carries the volume charge.
+  var RATE_HEAT = 1.624072;        // DKK per HCA unit — heating energy
+  var RATE_HOTWATER_ENERGY = 113.316571; // DKK per m³ — energy to heat that water (heating bucket)
+  var RATE_WATER = 55.835784;      // DKK per m³ — water supply, applies to hot + cold volume (water bucket)
+  // grundgebyr + EED fee: an annual rate (30.838626 DKK/m² x 74 m² + 71.0125 DKK EED),
+  // billed to the heating bucket regardless of usage. Daily rate is the same whether you
+  // derive it from the quarter shown on the bill or spread over the full year.
+  var FIXED_YEAR = 575.20*(365/92) + 17.90*(365/92);
+  var FIXED_PER_DAY = FIXED_YEAR / 365;
+
+  var ACONTO_HEAT = 500;  // DKK/month, as paid
+  var ACONTO_WATER = 250; // DKK/month, as paid
+
+  function heatingBucketCost(heatUnits, hotVol, days){
+    return heatUnits*RATE_HEAT + hotVol*RATE_HOTWATER_ENERGY + FIXED_PER_DAY*days;
+  }
+  function waterBucketCost(hotVol, coldVol){
+    return (hotVol+coldVol)*RATE_WATER;
+  }
+
+  function sum(rows){ return rows.reduce(function(a,r){return a+r[1];},0); }
+  function fmt(n,d){ return n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+  function dayLabel(iso){
+    var d = new Date(iso+"T00:00:00");
+    return d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+  }
+
+  // ---- November-to-date slices, used throughout for the current-pace projections ----
+  var novHeat = heat.filter(function(r){return r[0]>="2026-11-01";});
+  var novHot = hot.filter(function(r){return r[0]>="2026-11-01";});
+  var novCold = cold.filter(function(r){return r[0]>="2026-11-01";});
+
+  function kpi(label,color,value,unit,avgNov,avgOct){
+    var deltaPct = avgOct>0 ? ((avgNov-avgOct)/avgOct*100) : null;
+    var deltaHtml = "";
+    if(deltaPct!==null){
+      var cls = deltaPct>3?"up":(deltaPct<-3?"down":"");
+      var arrow = deltaPct>3?"&uarr;":(deltaPct<-3?"&darr;":"&middot;");
+      deltaHtml = '<div class="kpi-delta '+cls+'">'+arrow+' '+(deltaPct>0?"+":"")+deltaPct.toFixed(0)+'% vs Oct daily avg</div>';
+    }
+    return '<div class="kpi">'+
+      '<div class="kpi-label"><span class="kpi-dot" style="background:'+color+'"></span>'+label+'</div>'+
+      '<div class="kpi-value">'+value+' <span class="kpi-unit">'+unit+'</span></div>'+
+      deltaHtml+
+      '</div>';
+  }
+
+  var novHeatSum = sum(novHeat);
+  var novHotSum = sum(novHot);
+  var novColdSum = sum(novCold);
+
+  function kpiAconto(label,color,valueDKK,unit,acontoDKK){
+    var pct = acontoDKK>0 ? ((valueDKK-acontoDKK)/acontoDKK*100) : null;
+    var deltaHtml = "";
+    if(pct!==null){
+      var cls = pct>3?"up":(pct<-3?"down":"");
+      var arrow = pct>3?"&uarr;":(pct<-3?"&darr;":"&middot;");
+      deltaHtml = '<div class="kpi-delta '+cls+'">'+arrow+' '+(pct>0?"+":"")+pct.toFixed(0)+'% vs acconto</div>';
+    }
+    return '<div class="kpi">'+
+      '<div class="kpi-label"><span class="kpi-dot" style="background:'+color+'"></span>'+label+'</div>'+
+      '<div class="kpi-value">'+valueDKK.toFixed(0)+' <span class="kpi-unit">'+unit+'</span></div>'+
+      deltaHtml+
+      '</div>';
+  }
+
+  // ---- primary numbers assume the bedroom radiator's 20% reduction is NOT yet applied ----
+  // (RADIATOR_FACTOR_ACTIVE = 1.0 until a post-swap bill confirms it — see the radiator panel
+  // for the "if confirmed" comparison, computed separately below and never mixed into this).
+  var novBilledToDate = novOtherToDate + novBedroomToDate*RADIATOR_FACTOR_ACTIVE;
+  var novRawToDate = novOtherToDate + novBedroomToDate; // == novHeatSum, sanity check
+
+  // ---- build the full calendar-year picture: Jan-Oct actual, Nov to-date + projected, Dec projected ----
+  // Nov/Dec are projected by holding each radiator's November daily rate steady — no seasonal
+  // adjustment, per request ("extrapolate for one month" only, not a colder Dec).
+  var novOtherDaily = novOtherToDate/novHeat.length;
+  var novBedroomDaily = novBedroomToDate/novHeat.length;
+  var novDailyHeatUnits = novOtherDaily + novBedroomDaily*RADIATOR_FACTOR_ACTIVE;
+  var novDailyHotVol = novHotSum/novHeat.length;
+  var novDailyColdVol = novColdSum/novHeat.length;
+
+  function buildYearMonths(factor){
+    var ym = actualMonths.map(function(m, i){
+      return {
+        name: MONTH_NAMES[i], days: DAYS_IN_MONTH_2026[i], complete: true,
+        heatUnits: m.otherUnits + m.bedroomUnits*factor,
+        rawHeatUnits: m.otherUnits + m.bedroomUnits,
+        hotVol: m.hotVol, coldVol: m.coldVol
+      };
+    });
+    ym.push({ // Nov — projected to full month from the 12 days we have
+      name:"Nov", days:30, complete:false,
+      heatUnits: (novOtherDaily + novBedroomDaily*factor)*30,
+      rawHeatUnits: (novOtherDaily + novBedroomDaily)*30,
+      hotVol: novDailyHotVol*30, coldVol: novDailyColdVol*30,
+      toDateHeatUnits: novOtherToDate + novBedroomToDate*factor, toDateRawHeatUnits: novRawToDate,
+      toDateHotVol: novHotSum, toDateColdVol: novColdSum, toDateDays: novHeat.length
+    });
+    ym.push({ // Dec — fully projected at November's pace
+      name:"Dec", days:31, complete:false,
+      heatUnits: (novOtherDaily + novBedroomDaily*factor)*31,
+      rawHeatUnits: (novOtherDaily + novBedroomDaily)*31,
+      hotVol: novDailyHotVol*31, coldVol: novDailyColdVol*31
+    });
+    ym.forEach(function(m){
+      m.heatCost = heatingBucketCost(m.heatUnits, m.hotVol, m.days);
+      m.waterCost = waterBucketCost(m.hotVol, m.coldVol);
+      m.heatDiff = m.heatCost - ACONTO_HEAT;
+      m.waterDiff = m.waterCost - ACONTO_WATER;
+    });
+    return ym;
+  }
+
+  var yearMonths = buildYearMonths(RADIATOR_FACTOR_ACTIVE); // primary — drives every panel below
+  var yearMonthsIfPromised = buildYearMonths(RADIATOR_FACTOR_PROMISED); // comparison only
+
+  // year-to-date actuals (Jan 1 - Nov 12), using Nov's to-date figures, not the projection
+  var ytdHeatCost = yearMonths.slice(0,10).reduce(function(a,m){return a+m.heatCost;},0) +
+    heatingBucketCost(novBilledToDate, novHotSum, novHeat.length);
+  var ytdWaterCost = yearMonths.slice(0,10).reduce(function(a,m){return a+m.waterCost;},0) +
+    waterBucketCost(novHotSum, novColdSum);
+  var ytdRawHeatUnits = yearMonths.slice(0,10).reduce(function(a,m){return a+m.rawHeatUnits;},0) + novRawToDate;
+  var ytdBilledHeatUnits = yearMonths.slice(0,10).reduce(function(a,m){return a+m.heatUnits;},0) + novBilledToDate;
+
+  // ---- radiator panel: pure "what if confirmed" comparison, not used elsewhere ----
+  var ytdBedroomRaw = actualMonths.reduce(function(a,m){return a+m.bedroomUnits;},0) + novBedroomToDate;
+  var ytdUnitsWouldSave = ytdBedroomRaw * (1-RADIATOR_FACTOR_PROMISED);
+  var ytdDkkWouldSave = ytdUnitsWouldSave * RATE_HEAT;
+  var fullYearHeatCostActive = yearMonths.reduce(function(a,m){return a+m.heatCost;},0);
+  var fullYearHeatCostPromised = yearMonthsIfPromised.reduce(function(a,m){return a+m.heatCost;},0);
+  var fullYearDkkWouldSave = fullYearHeatCostActive - fullYearHeatCostPromised;
+
+  document.getElementById("radiatorMeters").textContent = OLD_METER+" → "+NEW_METER+" (swapped mid-March 2026) · 20% reduction not yet confirmed in a bill";
+  document.getElementById("radiatorKpiRow").innerHTML =
+    kpi("Bedroom radiator, YTD raw","var(--warn)", ytdBedroomRaw.toFixed(0), "HCA units, as billed now") +
+    kpi("If 20% confirmed","var(--heat)", (ytdBedroomRaw*RADIATOR_FACTOR_PROMISED).toFixed(0), "HCA units") +
+    kpi("Would save, full year","var(--money)", "−"+fullYearDkkWouldSave.toFixed(0), "DKK, if confirmed");
+  var daysElapsedYTD = yearMonths.slice(0,10).reduce(function(a,m){return a+m.days;},0) + novHeat.length; // 316
+  var daysInYear = 365;
+  var daysRemaining = daysInYear - daysElapsedYTD; // 49, Nov 13 - Dec 31
+
+  // precise YTD acconto (10 full months + Nov's fraction), reused by the KPI deltas and the budget panel
+  var acontoHeatToDate = ACONTO_HEAT*10 + ACONTO_HEAT*(novHeat.length/30);
+  var acontoWaterToDate = ACONTO_WATER*10 + ACONTO_WATER*(novHeat.length/30);
+  var acontoCombinedToDate = acontoHeatToDate + acontoWaterToDate;
+
+  document.getElementById("costKpiRow").innerHTML =
+    kpiAconto("Heating cost, YTD","var(--heat)", ytdHeatCost, "DKK", acontoHeatToDate) +
+    kpiAconto("Water cost, YTD","var(--cold)", ytdWaterCost, "DKK", acontoWaterToDate) +
+    kpiAconto("Combined, YTD","var(--money)", ytdHeatCost+ytdWaterCost, "DKK", acontoCombinedToDate);
+
+  // ---- what's driving the heating bill: radiator energy / hot-water energy / fixed base fee ----
+  var ytdHotVol = actualMonths.reduce(function(a,m){return a+m.hotVol;},0) + novHotSum;
+  var bdRadiator = ytdBilledHeatUnits*RATE_HEAT;
+  var bdHotWaterEnergy = ytdHotVol*RATE_HOTWATER_ENERGY;
+  var bdFixed = FIXED_PER_DAY*daysElapsedYTD;
+  var bdTotal = bdRadiator+bdHotWaterEnergy+bdFixed; // == ytdHeatCost
+  var bdSegs = [
+    {name:"Radiator heating", dkk:bdRadiator, color:"var(--heat)"},
+    {name:"Heating the water", dkk:bdHotWaterEnergy, color:"var(--hot)"},
+    {name:"Fixed base fee + EED", dkk:bdFixed, color:"var(--muted)"}
+  ];
+  document.getElementById("costBreakdown").innerHTML =
+    '<div class="bd-bar">'+bdSegs.map(function(s){return '<div class="bd-seg" style="width:'+(s.dkk/bdTotal*100)+'%;background:'+s.color+';"></div>';}).join("")+'</div>'+
+    '<div class="bd-legend">'+bdSegs.map(function(s){
+      return '<div class="bd-row"><span class="bd-dot" style="background:'+s.color+'"></span>'+
+        '<span class="bd-name">'+s.name+'</span>'+
+        '<span class="bd-pct">'+(s.dkk/bdTotal*100).toFixed(0)+'%</span>'+
+        '<span class="bd-dkk">'+s.dkk.toFixed(0)+' DKK</span></div>';
+    }).join("")+'</div>';
+
+  document.getElementById("costLegend").innerHTML =
+    '<span><span class="kpi-dot" style="background:var(--heat);display:inline-block;margin-right:5px;"></span>Heating energy</span>'+
+    '<span><span class="kpi-dot" style="background:var(--hot);display:inline-block;margin-right:5px;"></span>Hot water (energy + supply)</span>'+
+    '<span><span class="kpi-dot" style="background:var(--cold);display:inline-block;margin-right:5px;"></span>Cold water (supply)</span>'+
+    '<span>Heating total also includes a '+FIXED_PER_DAY.toFixed(2)+' DKK/day base fee, not shown per-bar</span>';
+
+  document.getElementById("heatTotal").textContent = sum(heat).toFixed(0)+" units over the 43 days shown";
+  document.getElementById("hotTotal").textContent = fmt(sum(hot),2)+" m³ over the 43 days shown";
+  document.getElementById("coldTotal").textContent = fmt(sum(cold),2)+" m³ over the 43 days shown";
+
+  // ---- area chart renderer ----
+  function renderChart(hostId, ttId, data, color, soft, unit){
+    var host = document.getElementById(hostId);
+    var tt = document.getElementById(ttId);
+    host.innerHTML = "";
+
+    function draw(){
+      var width = host.clientWidth || 600;
+      var height = 150;
+      var margin = {top:10,right:10,bottom:20,left:36};
+      var svg = d3.select(host).append("svg")
+        .attr("width",width).attr("height",height)
+        .attr("viewBox","0 0 "+width+" "+height);
+
+      var x = d3.scaleBand().domain(data.map(function(d){return d[0];})).range([margin.left,width-margin.right]).paddingInner(0.12);
+      var maxY = d3.max(data,function(d){return d[1];}) || 1;
+      var y = d3.scaleLinear().domain([0,maxY*1.12]).range([height-margin.bottom,margin.top]);
+
+      // gridlines
+      svg.append("g").selectAll("line")
+        .data(y.ticks(3)).join("line")
+        .attr("x1",margin.left).attr("x2",width-margin.right)
+        .attr("y1",function(d){return y(d);}).attr("y2",function(d){return y(d);})
+        .attr("stroke","var(--line)").attr("stroke-width",1);
+
+      svg.append("g").selectAll("text")
+        .data(y.ticks(3)).join("text")
+        .attr("x",margin.left-6).attr("y",function(d){return y(d)+3;})
+        .attr("text-anchor","end")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace")
+        .attr("fill","var(--muted)")
+        .text(function(d){return unit==="units"? d3.format("~s")(d): d.toFixed(2);});
+
+      // x labels, sparse
+      var tickEvery = Math.ceil(data.length/8);
+      svg.append("g").selectAll("text.x")
+        .data(data.filter(function(d,i){return i%tickEvery===0;}))
+        .join("text").attr("class","x")
+        .attr("x",function(d){return x(d[0])+x.bandwidth()/2;})
+        .attr("y",height-4)
+        .attr("text-anchor","middle")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace")
+        .attr("fill","var(--muted)")
+        .text(function(d){return dayLabel(d[0]);});
+
+      // bars
+      var bars = svg.append("g").selectAll("rect")
+        .data(data).join("rect")
+        .attr("x",function(d){return x(d[0]);})
+        .attr("width",x.bandwidth())
+        .attr("y",function(d){return y(d[1]);})
+        .attr("height",function(d){return (height-margin.bottom)-y(d[1]);})
+        .attr("rx",2)
+        .attr("fill",color)
+        .attr("opacity",function(d){return d[1]===0?0.25:0.95;});
+
+      bars.on("mouseenter",function(event,d){
+          d3.select(this).attr("opacity",1);
+          var bx = x(d[0])+x.bandwidth()/2;
+          var by = y(d[1]);
+          tt.style.left = bx+"px";
+          tt.style.top = by+"px";
+          tt.textContent = dayLabel(d[0])+" — "+ (unit==="units"? d[1].toFixed(0)+" units" : d[1].toFixed(3)+" m³");
+          tt.style.opacity = 1;
+        })
+        .on("mouseleave",function(event,d){
+          d3.select(this).attr("opacity", d[1]===0?0.25:0.95);
+          tt.style.opacity = 0;
+        });
+    }
+
+    draw();
+    var ro = new ResizeObserver(function(){ host.innerHTML=""; draw(); });
+    ro.observe(host);
+  }
+
+  renderChart("chartHeat","ttHeat",heat,"var(--heat)","var(--heat-soft)","units");
+  renderChart("chartHot","ttHot",hot,"var(--hot)","var(--hot-soft)","m3");
+  renderChart("chartCold","ttCold",cold,"var(--cold)","var(--cold-soft)","m3");
+
+  // ---- stacked daily cost chart (heat + hot + cold, DKK) ----
+  // "hot" carries both the heating-energy surcharge and its own water-supply charge;
+  // "cold" carries only the water-supply charge. Daily base fee isn't shown per-bar.
+  var costDaily = heat.map(function(r,i){
+    return {
+      date: r[0],
+      heat: r[1]*RATE_HEAT,
+      hot: hot[i][1]*(RATE_HOTWATER_ENERGY+RATE_WATER),
+      cold: cold[i][1]*RATE_WATER
+    };
+  });
+  costDaily.forEach(function(d){ d.total = d.heat+d.hot+d.cold; });
+
+  function renderStackedCost(hostId, ttId, data){
+    var host = document.getElementById(hostId);
+    var tt = document.getElementById(ttId);
+    host.innerHTML = "";
+
+    function draw(){
+      var width = host.clientWidth || 600;
+      var height = 160;
+      var margin = {top:10,right:10,bottom:20,left:34};
+      var svg = d3.select(host).append("svg")
+        .attr("width",width).attr("height",height)
+        .attr("viewBox","0 0 "+width+" "+height);
+
+      var x = d3.scaleBand().domain(data.map(function(d){return d.date;})).range([margin.left,width-margin.right]).paddingInner(0.12);
+      var maxY = d3.max(data,function(d){return d.total;}) || 1;
+      var y = d3.scaleLinear().domain([0,maxY*1.12]).range([height-margin.bottom,margin.top]);
+
+      svg.append("g").selectAll("line")
+        .data(y.ticks(3)).join("line")
+        .attr("x1",margin.left).attr("x2",width-margin.right)
+        .attr("y1",function(d){return y(d);}).attr("y2",function(d){return y(d);})
+        .attr("stroke","var(--line)").attr("stroke-width",1);
+
+      svg.append("g").selectAll("text")
+        .data(y.ticks(3)).join("text")
+        .attr("x",margin.left-6).attr("y",function(d){return y(d)+3;})
+        .attr("text-anchor","end")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace")
+        .attr("fill","var(--muted)")
+        .text(function(d){return d.toFixed(0);});
+
+      var tickEvery = Math.ceil(data.length/8);
+      svg.append("g").selectAll("text.x")
+        .data(data.filter(function(d,i){return i%tickEvery===0;}))
+        .join("text").attr("class","x")
+        .attr("x",function(d){return x(d.date)+x.bandwidth()/2;})
+        .attr("y",height-4)
+        .attr("text-anchor","middle")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace")
+        .attr("fill","var(--muted)")
+        .text(function(d){return dayLabel(d.date);});
+
+      var layers = [
+        {key:"heat", color:"var(--heat)"},
+        {key:"hot", color:"var(--hot)"},
+        {key:"cold", color:"var(--cold)"}
+      ];
+
+      var groups = svg.append("g").selectAll("g")
+        .data(data).join("g")
+        .attr("transform",function(d){return "translate("+x(d.date)+",0)";});
+
+      groups.each(function(d){
+        var g = d3.select(this);
+        var cum = 0;
+        layers.forEach(function(layer){
+          var v = d[layer.key];
+          var y0 = height-margin.bottom - (y(0)-y(cum));
+          var h = (height-margin.bottom)-y(v);
+          g.append("rect")
+            .attr("x",0).attr("width",x.bandwidth())
+            .attr("y", y(cum+v))
+            .attr("height", Math.max(0,h))
+            .attr("fill",layer.color)
+            .attr("opacity", d.total===0?0.2:0.95)
+            .attr("data-layer",layer.key);
+          cum += v;
+        });
+      });
+
+      groups.on("mouseenter",function(event,d){
+          d3.select(this).selectAll("rect").attr("opacity",1);
+          var bx = x(d.date)+x.bandwidth()/2;
+          var by = y(d.total);
+          tt.style.left = bx+"px";
+          tt.style.top = by+"px";
+          tt.textContent = dayLabel(d.date)+" — "+d.total.toFixed(1)+" DKK";
+          tt.style.opacity = 1;
+        })
+        .on("mouseleave",function(event,d){
+          d3.select(this).selectAll("rect").attr("opacity", d.total===0?0.2:0.95);
+          tt.style.opacity = 0;
+        });
+    }
+
+    draw();
+    var ro = new ResizeObserver(function(){ host.innerHTML=""; draw(); });
+    ro.observe(host);
+  }
+
+  renderStackedCost("chartCost","ttCost",costDaily);
+
+  // ---- monthly bars, full calendar year (Nov/Dec projected) ----
+  var maxMonth = Math.max.apply(null, yearMonths.map(function(m){return m.heatUnits;})) || 1;
+  document.getElementById("monthsRow").innerHTML = yearMonths.map(function(m){
+    var actualV = m.toDateHeatUnits!==undefined ? m.toDateHeatUnits : (m.complete? m.heatUnits : 0);
+    var h = Math.max(actualV>0?3:0, (actualV/maxMonth)*120);
+    var ph = !m.complete ? Math.max(4,((m.heatUnits-actualV)/maxMonth)*120) : 0;
+    return '<div class="month-col">'+
+      '<div style="display:flex;flex-direction:column-reverse;width:100%;align-items:center;">'+
+        (ph? '<div class="bar partial" style="height:'+ph+'px;max-width:46px"></div>':'')+
+        '<div class="bar" style="height:'+h+'px"></div>'+
+      '</div>'+
+      '<div class="month-val">'+actualV.toFixed(0)+(!m.complete? ' &rarr; ~'+m.heatUnits.toFixed(0):'')+'</div>'+
+      '<div class="month-name">'+m.name+'</div>'+
+    '</div>';
+  }).join("");
+
+  // ---- Acconto vs. actual, every month of 2026, using the corrected two-bucket cost model ----
+  var totalHeatCost = yearMonths.reduce(function(a,m){return a+m.heatCost;},0);
+  var totalWaterCost = yearMonths.reduce(function(a,m){return a+m.waterCost;},0);
+  var totalHeatDiff = totalHeatCost - ACONTO_HEAT*12;
+  var totalWaterDiff = totalWaterCost - ACONTO_WATER*12;
+
+  var accScale = Math.max.apply(null, yearMonths.concat([{heatDiff:totalHeatDiff,waterDiff:totalWaterDiff}])
+    .flatMap(function(m){return [Math.abs(m.heatDiff),Math.abs(m.waterDiff)];})) * 1.15 || 100;
+
+  function diffVal(diff){
+    return '<span class="acc-val"><span class="'+(diff>=0?'u':'d')+'">'+(diff>=0?'+':'')+diff.toFixed(0)+' DKK</span></span>';
+  }
+  function barFill(diff, cls){
+    var pct = Math.min(50, (Math.abs(diff)/accScale)*50);
+    var color = diff>=0 ? 'var(--warn)' : 'var(--money)';
+    var left = diff>=0 ? '50%' : (50-pct)+'%';
+    return '<div class="acc-fill '+cls+'" style="left:'+left+';width:'+pct+'%;background:'+color+';"></div>';
+  }
+
+  function accRow(name, sub, heatDiff, waterDiff, extraClass){
+    return '<div class="acc-row '+(extraClass||'')+'">'+
+      '<div class="acc-month">'+name+(sub?'<small>'+sub+'</small>':'')+'</div>'+
+      '<div class="acc-bars">'+
+        '<div class="acc-label">Heating + hot water + base fee '+diffVal(heatDiff)+'</div>'+
+        '<div class="acc-track">'+'<div class="acc-zero"></div>'+barFill(heatDiff,'heat')+'</div>'+
+        '<div class="acc-label" style="margin-top:4px;">Water supply (hot + cold) '+diffVal(waterDiff)+'</div>'+
+        '<div class="acc-track">'+'<div class="acc-zero"></div>'+barFill(waterDiff,'water')+'</div>'+
+      '</div>'+
+      '<div></div>'+
+    '</div>';
+  }
+
+  document.getElementById("acontoRows").innerHTML =
+    yearMonths.map(function(m){
+      return accRow(m.name, m.complete?"actual":(m.toDateHeatUnits!==undefined?"to date → projected":"projected"), m.heatDiff, m.waterDiff);
+    }).join("") +
+    accRow("Total","Jan–Dec 2026", totalHeatDiff, totalWaterDiff, "acc-total");
+
+  var heatWord = totalHeatDiff>=0 ? "owe an extra" : "get back";
+  var waterWord = totalWaterDiff>=0 ? "owe an extra" : "get back";
+  document.getElementById("acontoNote").innerHTML =
+    'Projected full-year settlement, holding Nov/Dec at November’s current pace: you’d <b style="color:'+(totalHeatDiff>=0?'var(--warn)':'var(--money)')+'">'+heatWord+' '+Math.abs(totalHeatDiff).toFixed(0)+' DKK on heating</b> and '+
+    '<b style="color:'+(totalWaterDiff>=0?'var(--warn)':'var(--money)')+'">'+waterWord+' '+Math.abs(totalWaterDiff).toFixed(0)+' DKK on water</b> for all of 2026, on top of the '+(ACONTO_HEAT*12+ACONTO_WATER*12).toFixed(0)+' DKK already paid in acconto. '+
+    'January–February alone (peak heating) put you roughly '+(yearMonths[0].heatDiff+yearMonths[0].waterDiff+yearMonths[1].heatDiff+yearMonths[1].waterDiff).toFixed(0)+' DKK over combined acconto &mdash; that gap, not the recent Oct–Nov data, is why you’re already well past typical reserve levels. (These figures don’t include the bedroom radiator’s promised 20% reduction, which isn’t confirmed yet — see the radiator panel above for what it would be worth if it is.)';
+
+  // ---- Remaining budget before a combined over-acconto threshold, full 2026 settlement ----
+  var actualCombinedToDate = ytdHeatCost + ytdWaterCost;
+  var dailyCostAtNovPace = novDailyHeatUnits*RATE_HEAT + novDailyHotVol*(RATE_HOTWATER_ENERGY+RATE_WATER) + novDailyColdVol*RATE_WATER + FIXED_PER_DAY;
+
+  // find the month where cumulative over-acconto first crossed each threshold, for the "already past it" case
+  function monthCrossing(threshold){
+    var cum = 0, prevCum = 0;
+    for(var i=0;i<yearMonths.length;i++){
+      var m = yearMonths[i];
+      var monthDiff = m.complete ? (m.heatDiff+m.waterDiff) :
+        (m.toDateHeatUnits!==undefined ? (heatingBucketCost(m.toDateHeatUnits,m.toDateHotVol,m.toDateDays)+waterBucketCost(m.toDateHotVol,m.toDateColdVol) - (ACONTO_HEAT+ACONTO_WATER)*(m.toDateDays/m.days)) : (m.heatDiff+m.waterDiff));
+      prevCum = cum;
+      cum += monthDiff;
+      if(cum >= threshold){
+        return {monthIndex:i, name:m.name, fraction: monthDiff>0 ? Math.max(0,Math.min(1,(threshold-prevCum)/monthDiff)) : 0};
+      }
+    }
+    return null;
+  }
+
+  function renderBudget(threshold){
+    var acontoFullYear = (ACONTO_HEAT+ACONTO_WATER)*12;
+    var currentDiff = actualCombinedToDate - acontoCombinedToDate;
+
+    var targetMaxSpend = acontoFullYear + threshold;
+    var remainingBudget = targetMaxSpend - actualCombinedToDate;
+    var alreadyOverThreshold = currentDiff >= threshold;
+
+    var remainingFixed = FIXED_PER_DAY*daysRemaining;
+    var remainingWaterVol = (novDailyHotVol+novDailyColdVol)*daysRemaining*RATE_WATER;
+    var remainingHotEnergy = novDailyHotVol*daysRemaining*RATE_HOTWATER_ENERGY;
+    var remainingHeatBudget = remainingBudget - remainingFixed - remainingWaterVol - remainingHotEnergy;
+    var remainingHeatUnits = Math.max(0, remainingHeatBudget/RATE_HEAT);
+    var remainingHeatUnitsPerDay = daysRemaining>0 ? remainingHeatUnits/daysRemaining : 0;
+
+    document.getElementById("budgetKpiRow").innerHTML =
+      kpi("Current position","var(--money)", (currentDiff>=0?"+":"")+currentDiff.toFixed(0), "DKK vs acconto") +
+      kpi(alreadyOverThreshold?"Already past threshold by":"Remaining headroom","var(--money)", (alreadyOverThreshold? "+"+(currentDiff-threshold).toFixed(0) : remainingBudget.toFixed(0)), "DKK"+(alreadyOverThreshold?"":", to Dec 31")) +
+      kpi("Heating units left","var(--heat)", remainingHeatUnits.toFixed(0), "units ("+remainingHeatUnitsPerDay.toFixed(1)+"/day)");
+
+    var pct = Math.max(0, Math.min(100, (actualCombinedToDate/targetMaxSpend)*100));
+    document.getElementById("budgetFill").style.width = pct+"%";
+    document.getElementById("budgetMarker").style.left = ((acontoFullYear/targetMaxSpend)*100)+"%";
+    document.getElementById("budgetScaleEnd").textContent = targetMaxSpend.toFixed(0)+" DKK (threshold)";
+
+    var note;
+    if(alreadyOverThreshold){
+      var cross = monthCrossing(threshold);
+      var whenTxt = cross ? "around "+cross.name+" 2026"+(cross.monthIndex>=10?" (projected at your current pace)":"") : "earlier this year";
+      note = '<span>&#9888;&#65039;</span><div>You’re already <b>'+(currentDiff-threshold).toFixed(0)+' DKK past</b> the '+threshold+' DKK threshold — you crossed it '+whenTxt+', driven almost entirely by the heavy Jan–Feb heating months, well before this dashboard had Oct–Nov data to show. Holding usage flat for the rest of the year won’t bring you back under it; the heating-units figure above is the year-end allowance implied by the threshold itself, not a safe amount still available to spend.</div>';
+    } else {
+      note = '<span>&#9989;</span><div>At November’s current pace, you’re projected to stay under the threshold through Dec 31, with about <b>'+remainingBudget.toFixed(0)+' DKK</b> of headroom left — roughly <b>'+remainingHeatUnits.toFixed(0)+' more heating units</b> (~'+remainingHeatUnitsPerDay.toFixed(1)+'/day) on top of your current pace, assuming water use stays as is.</div>';
+    }
+    document.getElementById("budgetNote").innerHTML = note;
+  }
+
+  renderBudget(2000);
+  document.getElementById("thresholdInput").addEventListener("input", function(e){
+    var v = parseFloat(e.target.value);
+    if(!isNaN(v) && v>=0) renderBudget(v);
+  });
+})();
+</script>
