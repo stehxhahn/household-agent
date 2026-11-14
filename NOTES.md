@@ -6,7 +6,7 @@ Context for working on `techem_dashboard.html` or extending `mcp_server.py` — 
 
 Dashboard: `techem_dashboard.html`, published as a Claude Artifact and committed to git. Data comes from the Techem MCP server (`mcp_server.py` / `techem.py`), which wraps Techem's resident GraphQL API (`techemadmin.dk/analytics/graphql`).
 
-Property: Jesper Brochmands Gade 9, 3.tv, København N.
+A single apartment in a multi-unit Danish building. The specific address is intentionally not in this repo — the Techem account identifier lives only in the gitignored `.env` (`TECHEM_OBJECT_ID`).
 
 ## Acconto
 
@@ -27,7 +27,7 @@ Hot water is billed twice: once for the energy to heat it (heating account) and 
 
 ## Bedroom radiator
 
-Meter `21090797` (through mid-March 2026) → replaced with `21170356`. Sits in the most wind-exposed room, runs far hotter than the apartment's other 3 radiators (e.g. 384 units in January vs. 183–204 for the others). The administrator verbally agreed a 20% reduction on this radiator's billed units to compensate.
+One radiator's meter was replaced in mid-March 2026 (old/new serials are in Supabase's `radiator_adjustment` table, not this file). It sits in the most wind-exposed room and runs far hotter than the apartment's other 3 radiators (e.g. 384 units in January vs. 183–204 for the others). The administrator verbally agreed a 20% reduction on this radiator's billed units to compensate.
 
 **This is not confirmed in any real bill yet.** The Q4 2025 bill predates the March swap so it can't confirm either way (checked directly — raw totals from that period don't cleanly match either a 0% or 20% reduction, consistent with the deal not applying yet). Per explicit instruction: **the dashboard's primary/headline numbers assume no reduction** (conservative — `RADIATOR_FACTOR_ACTIVE = 1.0` in the script). The 20%-discount scenario is shown only as a separate "if confirmed" comparison. Don't silently bake the 20% into headline numbers — re-verify against a real post-March-2026 bill first.
 
