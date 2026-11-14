@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Household Utility</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{
+  --bg:#eef1ef;
+  --surface:#ffffff;
+  --ink:#152025;
+  --muted:#5c6b6a;
+  --line:#d6dcd9;
+  --heat:#a8623c;
+  --heat-soft:#a8623c33;
+  --hot:#c98a2c;
+  --hot-soft:#c98a2c2e;
+  --cold:#2c7a78;
+  --cold-soft:#2c7a7830;
+  --money:#3d6e4f;
+  --money-soft:#3d6e4f26;
+  --warn:#b4432f;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161a; --surface:#1a2126; --ink:#eceeec; --muted:#92a0a0; --line:#2b3339;
+    --heat:#d98455; --heat-soft:#d9845540; --hot:#e6ad4c; --hot-soft:#e6ad4c38;
+    --cold:#4ba7a3; --cold-soft:#4ba7a33a; --money:#6fbf8b; --money-soft:#6fbf8b33;
+    --warn:#e2694f; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161a; --surface:#1a2126; --ink:#eceeec; --muted:#92a0a0; --line:#2b3339;
+  --heat:#d98455; --heat-soft:#d9845540; --hot:#e6ad4c; --hot-soft:#e6ad4c38;
+  --cold:#4ba7a3; --cold-soft:#4ba7a33a; --money:#6fbf8b; --money-soft:#6fbf8b33;
+  --warn:#e2694f; color-scheme:dark;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--bg);}
+body{
+  color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px));
+  padding-block:28px;
+}
+[hidden]{display:none!important;}
+.page{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:28px;}
+.masthead{display:flex;flex-direction:column;gap:4px;}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+h1{font-size:clamp(24px,4vw,34px);font-weight:800;margin:0;text-wrap:balance;letter-spacing:-.01em;}
+.sub{color:var(--muted);font-size:14px;max-width:62ch;margin:0;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;display:flex;flex-direction:column;gap:6px;min-width:0;}
+.kpi-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;display:flex;align-items:center;gap:6px;}
+.kpi-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+.kpi-value{font-family:'IBM Plex Mono',monospace;font-size:clamp(22px,4vw,30px);font-weight:600;font-variant-numeric:tabular-nums;line-height:1;}
+.kpi-unit{font-size:13px;color:var(--muted);font-weight:500;}
+.kpi-delta{font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+.kpi-delta.up{color:var(--warn);}
+.kpi-delta.down{color:var(--cold);}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 18px 10px;}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
+.panel-title{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;}
+.panel-total{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.chart-wrap{width:100%;overflow:visible;}
+.tooltip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 8px;border-radius:6px;transform:translate(-50%,-115%);white-space:nowrap;opacity:0;transition:opacity .1s ease;z-index:5;}
+.chart-host{position:relative;}
+
+.note{display:flex;gap:10px;align-items:flex-start;background:var(--heat-soft);border:1px solid var(--heat);border-radius:12px;padding:12px 14px;font-size:13px;color:var(--ink);}
+.note b{color:var(--heat);}
+
+.months{display:flex;gap:18px;align-items:flex-end;height:150px;padding:6px 2px 0;}
+.month-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;}
+.bar{width:100%;max-width:46px;border-radius:5px 5px 2px 2px;background:var(--heat);position:relative;}
+.bar.partial{background-image:repeating-linear-gradient(135deg, var(--heat) 0 6px, var(--heat-soft) 6px 12px);}
+.month-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-variant-numeric:tabular-nums;}
+.month-name{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+
+.acc-row{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);}
+.acc-row:last-child{border-bottom:none;}
+.acc-month{font-size:13px;font-weight:700;}
+.acc-month small{display:block;font-weight:500;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
+.acc-bars{display:flex;flex-direction:column;gap:6px;}
+.acc-track{position:relative;height:9px;background:var(--line);border-radius:5px;}
+.acc-zero{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--muted);opacity:.6;}
+.acc-fill{position:absolute;top:0;bottom:0;border-radius:5px;}
+.acc-fill.heat{background:var(--heat);}
+.acc-fill.water{background:var(--cold);}
+.acc-label{font-size:11px;color:var(--muted);display:flex;gap:5px;align-items:center;}
+.acc-val{font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:right;white-space:nowrap;min-width:92px;}
+.acc-val .u{color:var(--warn);}
+.acc-val .d{color:var(--money);}
+.acc-total{background:var(--surface);}
+
+.budget-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px;}
+.budget-input-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.budget-input-row label{font-size:13px;color:var(--muted);}
+.budget-input-row input{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;width:100px;}
+.budget-bar-wrap{margin-top:16px;}
+.budget-track{position:relative;height:16px;background:var(--line);border-radius:8px;overflow:hidden;}
+.budget-fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:var(--money);}
+.budget-marker{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--warn);}
+.budget-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
+
+.bd-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);}
+.bd-seg{height:100%;}
+.bd-legend{display:flex;flex-direction:column;gap:7px;margin-top:12px;}
+.bd-row{display:flex;align-items:center;gap:8px;font-size:12px;}
+.bd-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+.bd-name{flex:1;color:var(--ink);}
+.bd-pct{color:var(--muted);font-family:'IBM Plex Mono',monospace;width:42px;text-align:right;}
+.bd-dkk{font-family:'IBM Plex Mono',monospace;font-weight:600;width:76px;text-align:right;}
+
+footer{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:3px;padding-bottom:6px;}
+
+/* password gate */
+.gate{min-height:70vh;display:flex;align-items:center;justify-content:center;}
+.gate-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px;max-width:340px;width:100%;display:flex;flex-direction:column;gap:14px;}
+.gate-card h2{margin:0;font-size:18px;}
+.gate-card p{margin:0;color:var(--muted);font-size:13px;}
+.gate-card input{font-family:'IBM Plex Mono',monospace;font-size:15px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%;}
+.gate-card button{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;background:var(--heat);color:#fff;border:none;border-radius:8px;padding:11px;cursor:pointer;}
+.gate-card button:disabled{opacity:.6;cursor:default;}
+.gate-error{color:var(--warn);font-size:13px;min-height:16px;}
+.loading{text-align:center;color:var(--muted);padding:60px 0;font-family:'IBM Plex Mono',monospace;font-size:13px;}
+
+@media (max-width:560px){
+  .kpi-row{grid-template-columns:1fr;}
+  .budget-grid{grid-template-columns:1fr;}
+  .acc-row{grid-template-columns:52px 1fr;}
+  .acc-val{text-align:left;min-width:0;grid-column:2;}
+}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <h2>Household Utility</h2>
+    <p>Enter the shared password to view heating &amp; water costs.</p>
+    <input type="password" id="gatePassword" placeholder="Password" autocomplete="current-password">
+    <button id="gateSubmit">Unlock</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<div class="loading" id="loading" hidden>Loading your usage data…</div>
+
+<div class="page" id="dashboard" hidden>
+  <div class="masthead">
+    <div class="eyebrow">Techem portal &middot; apartment meters</div>
+    <h1>Heating &amp; water usage</h1>
+    <p class="sub">Live from Supabase &mdash; rates, acconto, and usage all read from the database, not hardcoded.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--money)"></span>Estimated cost</div>
+      <div class="panel-total" id="costPanelTotal"></div>
+    </div>
+    <div class="kpi-row" id="costKpiRow" style="margin-bottom:16px;"></div>
+    <div class="panel-total" style="margin-bottom:6px;">What's driving the heating bill</div>
+    <div id="costBreakdown"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--heat)"></span>Acconto vs. actual</div>
+      <div class="panel-total" id="acontoPanelTotal"></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">The &ldquo;heating&rdquo; line billed against your acconto isn&rsquo;t just radiator units &mdash; it also carries hot-water heating energy and the fixed base fee, both of which keep accruing even in months with zero radiator use. That&rsquo;s why summer months still show a cost against it.</p>
+    <div id="acontoRows"></div>
+    <div class="note" style="margin-top:12px;font-size:12px;background:var(--money-soft);border-color:var(--money);">
+      <span>&#128176;</span>
+      <div id="acontoNote"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--warn)"></span>Remaining budget</div>
+      <div class="panel-total">Before you're this far over acconto for the year</div>
+    </div>
+    <div class="budget-input-row">
+      <label for="thresholdInput">Alert threshold</label>
+      <input type="number" id="thresholdInput" value="2000" step="100" min="0">
+      <span style="font-size:13px;color:var(--muted);">DKK over combined acconto, by Dec&nbsp;31</span>
+    </div>
+    <div class="budget-grid" id="budgetKpiRow"></div>
+    <div class="budget-bar-wrap">
+      <div class="budget-track"><div class="budget-fill" id="budgetFill"></div><div class="budget-marker" id="budgetMarker"></div></div>
+      <div class="budget-scale"><span>0 DKK</span><span id="budgetScaleEnd"></span></div>
+    </div>
+    <div class="note" style="margin-top:14px;font-size:12px;" id="budgetNote"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--warn)"></span>Bedroom radiator adjustment</div>
+      <div class="panel-total" id="radiatorMeters"></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px;" id="radiatorNote"></p>
+    <div class="kpi-row" id="radiatorKpiRow"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Heating by month &mdash; billed HCA units</div>
+      <div class="panel-total" id="monthsPanelTotal"></div>
+    </div>
+    <div class="months" id="monthsRow"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--heat)"></span>Heating &mdash; HCA units / day</div>
+      <div class="panel-total" id="heatTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartHeat"></div><div class="tooltip" id="ttHeat"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--money)"></span>Daily cost &mdash; DKK</div>
+      <div class="panel-total">Apartment total, not radiator-adjusted</div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartCost"></div><div class="tooltip" id="ttCost"></div></div>
+    <div id="costLegend" style="display:flex;gap:16px;margin:10px 2px 4px;font-size:12px;color:var(--muted);flex-wrap:wrap;"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--hot)"></span>Hot water &mdash; m&sup3; / day</div>
+      <div class="panel-total" id="hotTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartHot"></div><div class="tooltip" id="ttHot"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title"><span class="kpi-dot" style="background:var(--cold)"></span>Cold water &mdash; m&sup3; / day</div>
+      <div class="panel-total" id="coldTotal"></div>
+    </div>
+    <div class="chart-host"><div class="chart-wrap" id="chartCold"></div><div class="tooltip" id="ttCold"></div></div>
+  </div>
+
+  <footer>
+    <span id="footerSource"></span>
+    <span id="footerRates"></span>
+    <span>Data lives in Supabase (<code>Household Utility</code> project); this page reads it live, gated by a shared password. Source: <code>household-agent</code> (private repo).</span>
+  </footer>
+</div>
+
+<script>
+const SUPABASE_URL = "https://nheeetlszmrvvrquldhx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_NruAwvdrbVI4vcUfBIUD8g_ehBlv7Kq";
+const LOGIN_URL = SUPABASE_URL + "/functions/v1/login";
+
+function sum(rows){ return rows.reduce((a,r)=>a+r[1],0); }
+function fmt(n,d){ return n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}); }
+function dayLabel(iso){ const d=new Date(iso+"T00:00:00"); return d.toLocaleDateString(undefined,{month:"short",day:"numeric"}); }
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function kpi(label,color,value,unit,avgNov,avgOct){
+  let deltaHtml = "";
+  if(avgOct!==undefined && avgOct>0){
+    const deltaPct = ((avgNov-avgOct)/avgOct*100);
+    const cls = deltaPct>3?"up":(deltaPct<-3?"down":"");
+    const arrow = deltaPct>3?"&uarr;":(deltaPct<-3?"&darr;":"&middot;");
+    deltaHtml = '<div class="kpi-delta '+cls+'">'+arrow+' '+(deltaPct>0?"+":"")+deltaPct.toFixed(0)+'% vs Oct daily avg</div>';
+  }
+  return '<div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:'+color+'"></span>'+label+'</div>'+
+    '<div class="kpi-value">'+value+' <span class="kpi-unit">'+unit+'</span></div>'+deltaHtml+'</div>';
+}
+function kpiAconto(label,color,valueDKK,unit,acontoDKK){
+  let deltaHtml = "";
+  if(acontoDKK>0){
+    const pct = ((valueDKK-acontoDKK)/acontoDKK*100);
+    const cls = pct>3?"up":(pct<-3?"down":"");
+    const arrow = pct>3?"&uarr;":(pct<-3?"&darr;":"&middot;");
+    deltaHtml = '<div class="kpi-delta '+cls+'">'+arrow+' '+(pct>0?"+":"")+pct.toFixed(0)+'% vs acconto</div>';
+  }
+  return '<div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:'+color+'"></span>'+label+'</div>'+
+    '<div class="kpi-value">'+valueDKK.toFixed(0)+' <span class="kpi-unit">'+unit+'</span></div>'+deltaHtml+'</div>';
+}
+
+// ---- password gate ----
+function getToken(){ try{ return localStorage.getItem("hu_token"); }catch(e){ return null; } }
+function setToken(t){ try{ localStorage.setItem("hu_token", t); }catch(e){} }
+function clearToken(){ try{ localStorage.removeItem("hu_token"); }catch(e){} }
+
+async function login(password){
+  const res = await fetch(LOGIN_URL, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({password})
+  });
+  if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error || "login failed");
+  const data = await res.json();
+  return data.token;
+}
+
+async function sbFetch(table, query, token){
+  const res = await fetch(SUPABASE_URL+"/rest/v1/"+table+"?"+(query||"select=*"), {
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: "Bearer "+SUPABASE_KEY,
+      "x-session-token": token
+    }
+  });
+  if(!res.ok) throw new Error("fetch failed: "+table+" ("+res.status+")");
+  return res.json();
+}
+
+async function loadAllData(token){
+  const [monthly, daily, rates, radiator] = await Promise.all([
+    sbFetch("monthly_usage", "select=*&order=year.asc,month.asc", token),
+    sbFetch("daily_usage", "select=*&order=usage_date.asc", token),
+    sbFetch("billing_rates", "select=*", token),
+    sbFetch("radiator_adjustment", "select=*", token)
+  ]);
+  if(!Array.isArray(monthly) || monthly.length===0) throw new Error("empty result — session likely invalid");
+  return {monthly, daily, rates: rates[0] ? Object.fromEntries(rates.map(r=>[r.key,Number(r.value)])) : {}, radiator: radiator[0]};
+}
+
+async function tryBoot(){
+  const token = getToken();
+  if(!token) return showGate();
+  document.getElementById("gate").hidden = true;
+  document.getElementById("loading").hidden = false;
+  try{
+    const data = await loadAllData(token);
+    document.getElementById("loading").hidden = true;
+    document.getElementById("dashboard").hidden = false;
+    renderDashboard(data);
+  }catch(e){
+    clearToken();
+    showGate("Session expired — please log in again.");
+  }
+}
+
+function showGate(err){
+  document.getElementById("loading").hidden = true;
+  document.getElementById("dashboard").hidden = true;
+  document.getElementById("gate").hidden = false;
+  document.getElementById("gateError").textContent = err||"";
+}
+
+document.getElementById("gateSubmit").addEventListener("click", submitPassword);
+document.getElementById("gatePassword").addEventListener("keydown", e=>{ if(e.key==="Enter") submitPassword(); });
+
+async function submitPassword(){
+  const pw = document.getElementById("gatePassword").value;
+  const btn = document.getElementById("gateSubmit");
+  const err = document.getElementById("gateError");
+  if(!pw) return;
+  btn.disabled = true; err.textContent = "";
+  try{
+    const token = await login(pw);
+    setToken(token);
+    await tryBoot();
+  }catch(e){
+    err.textContent = "Wrong password.";
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+tryBoot();
+
+// ---- dashboard rendering, once data has loaded ----
+function renderDashboard(data){
+  const RATE_HEAT = data.rates.rate_heat;
+  const RATE_HOTWATER_ENERGY = data.rates.rate_hotwater_energy;
+  const RATE_WATER = data.rates.rate_water;
+  const FIXED_PER_DAY = data.rates.fixed_per_day;
+  const ACONTO_HEAT = data.rates.aconto_heat;
+  const ACONTO_WATER = data.rates.aconto_water;
+
+  const rad = data.radiator;
+  const RADIATOR_FACTOR_ACTIVE = Number(rad.factor_active);
+  const RADIATOR_FACTOR_PROMISED = Number(rad.factor_promised);
+
+  function heatingBucketCost(heatUnits, hotVol, days){
+    return heatUnits*RATE_HEAT + hotVol*RATE_HOTWATER_ENERGY + FIXED_PER_DAY*days;
+  }
+  function waterBucketCost(hotVol, coldVol){
+    return (hotVol+coldVol)*RATE_WATER;
+  }
+
+  // split monthly_usage into complete months and the current partial month
+  const complete = data.monthly.filter(m => m.days_recorded === m.days_in_month)
+    .map(m => ({month:m.month, days:m.days_in_month, otherUnits:Number(m.other_units), bedroomUnits:Number(m.bedroom_units_raw), hotVol:Number(m.hot_vol_m3), coldVol:Number(m.cold_vol_m3)}));
+  const partial = data.monthly.find(m => m.days_recorded < m.days_in_month);
+
+  const heat = data.daily.map(r => [r.usage_date, Number(r.heat_units)]);
+  const hot = data.daily.map(r => [r.usage_date, Number(r.hot_vol_m3)]);
+  const cold = data.daily.map(r => [r.usage_date, Number(r.cold_vol_m3)]);
+
+  const novHeat = heat.filter(r => r[0] >= partial ? ("2026-"+String(partial.month).padStart(2,"0")+"-01") : "");
+  const curMonthPrefix = "2026-"+String(partial.month).padStart(2,"0");
+  const curHeat = heat.filter(r => r[0].startsWith(curMonthPrefix));
+  const curHot = hot.filter(r => r[0].startsWith(curMonthPrefix));
+  const curCold = cold.filter(r => r[0].startsWith(curMonthPrefix));
+
+  const novHeatSum = sum(curHeat);
+  const novHotSum = sum(curHot);
+  const novColdSum = sum(curCold);
+
+  const novOtherToDate = Number(partial.other_units);
+  const novBedroomToDate = Number(partial.bedroom_units_raw);
+  const novDays = partial.days_recorded;
+  const nextMonthDays = complete.length ? 31 : 31; // Dec fallback
+
+  const novBilledToDate = novOtherToDate + novBedroomToDate*RADIATOR_FACTOR_ACTIVE;
+  const novRawToDate = novOtherToDate + novBedroomToDate;
+
+  const novOtherDaily = novOtherToDate/novDays;
+  const novBedroomDaily = novBedroomToDate/novDays;
+  const novDailyHeatUnits = novOtherDaily + novBedroomDaily*RADIATOR_FACTOR_ACTIVE;
+  const novDailyHotVol = novHotSum/novDays;
+  const novDailyColdVol = novColdSum/novDays;
+
+  const DAYS_IN_MONTH = {1:31,2:28,3:31,4:30,5:31,6:30,7:31,8:31,9:30,10:31,11:30,12:31};
+  const fullMonthDays = DAYS_IN_MONTH[partial.month];
+  const nextMonth = partial.month === 12 ? 1 : partial.month+1;
+  const nextMonthDaysActual = DAYS_IN_MONTH[nextMonth];
+
+  function buildYearMonths(factor){
+    const ym = complete.map(m => ({
+      name: MONTH_NAMES[m.month-1], days: m.days, complete: true,
+      heatUnits: m.otherUnits + m.bedroomUnits*factor,
+      rawHeatUnits: m.otherUnits + m.bedroomUnits,
+      hotVol: m.hotVol, coldVol: m.coldVol
+    }));
+    ym.push({
+      name: MONTH_NAMES[partial.month-1], days: fullMonthDays, complete:false,
+      heatUnits: (novOtherDaily + novBedroomDaily*factor)*fullMonthDays,
+      rawHeatUnits: (novOtherDaily + novBedroomDaily)*fullMonthDays,
+      hotVol: novDailyHotVol*fullMonthDays, coldVol: novDailyColdVol*fullMonthDays,
+      toDateHeatUnits: novOtherToDate + novBedroomToDate*factor, toDateRawHeatUnits: novRawToDate,
+      toDateHotVol: novHotSum, toDateColdVol: novColdSum, toDateDays: novDays
+    });
+    ym.push({
+      name: MONTH_NAMES[nextMonth-1], days: nextMonthDaysActual, complete:false,
+      heatUnits: (novOtherDaily + novBedroomDaily*factor)*nextMonthDaysActual,
+      rawHeatUnits: (novOtherDaily + novBedroomDaily)*nextMonthDaysActual,
+      hotVol: novDailyHotVol*nextMonthDaysActual, coldVol: novDailyColdVol*nextMonthDaysActual
+    });
+    ym.forEach(m => {
+      m.heatCost = heatingBucketCost(m.heatUnits, m.hotVol, m.days);
+      m.waterCost = waterBucketCost(m.hotVol, m.coldVol);
+      m.heatDiff = m.heatCost - ACONTO_HEAT;
+      m.waterDiff = m.waterCost - ACONTO_WATER;
+    });
+    return ym;
+  }
+
+  const yearMonths = buildYearMonths(RADIATOR_FACTOR_ACTIVE);
+  const yearMonthsIfPromised = buildYearMonths(RADIATOR_FACTOR_PROMISED);
+
+  const ytdHeatCost = yearMonths.slice(0,complete.length).reduce((a,m)=>a+m.heatCost,0) + heatingBucketCost(novBilledToDate, novHotSum, novDays);
+  const ytdWaterCost = yearMonths.slice(0,complete.length).reduce((a,m)=>a+m.waterCost,0) + waterBucketCost(novHotSum, novColdSum);
+  const ytdBilledHeatUnits = yearMonths.slice(0,complete.length).reduce((a,m)=>a+m.heatUnits,0) + novBilledToDate;
+
+  const ytdBedroomRaw = complete.reduce((a,m)=>a+m.bedroomUnits,0) + novBedroomToDate;
+  const fullYearHeatCostActive = yearMonths.reduce((a,m)=>a+m.heatCost,0);
+  const fullYearHeatCostPromised = yearMonthsIfPromised.reduce((a,m)=>a+m.heatCost,0);
+  const fullYearDkkWouldSave = fullYearHeatCostActive - fullYearHeatCostPromised;
+
+  document.getElementById("radiatorMeters").textContent = rad.old_meter+" → "+rad.new_meter+" (swapped "+rad.swap_date+") · "+(rad.confirmed_in_bill?"20% reduction confirmed":"20% reduction not yet confirmed in a bill");
+  document.getElementById("radiatorNote").textContent = rad.note;
+  document.getElementById("radiatorKpiRow").innerHTML =
+    kpi("Bedroom radiator, YTD raw","var(--warn)", ytdBedroomRaw.toFixed(0), "HCA units, as billed now") +
+    kpi("If 20% confirmed","var(--heat)", (ytdBedroomRaw*RADIATOR_FACTOR_PROMISED).toFixed(0), "HCA units") +
+    kpi("Would save, full year","var(--money)", "−"+fullYearDkkWouldSave.toFixed(0), "DKK, if confirmed");
+
+  const daysElapsedYTD = yearMonths.slice(0,complete.length).reduce((a,m)=>a+m.days,0) + novDays;
+  const daysInYear = 365;
+  const daysRemaining = daysInYear - daysElapsedYTD;
+
+  const monthsElapsedFull = complete.length;
+  const acontoHeatToDate = ACONTO_HEAT*monthsElapsedFull + ACONTO_HEAT*(novDays/fullMonthDays);
+  const acontoWaterToDate = ACONTO_WATER*monthsElapsedFull + ACONTO_WATER*(novDays/fullMonthDays);
+  const acontoCombinedToDate = acontoHeatToDate + acontoWaterToDate;
+
+  document.getElementById("costPanelTotal").textContent = "Year-to-date · vs. acconto pace";
+  document.getElementById("costKpiRow").innerHTML =
+    kpiAconto("Heating cost, YTD","var(--heat)", ytdHeatCost, "DKK", acontoHeatToDate) +
+    kpiAconto("Water cost, YTD","var(--cold)", ytdWaterCost, "DKK", acontoWaterToDate) +
+    kpiAconto("Combined, YTD","var(--money)", ytdHeatCost+ytdWaterCost, "DKK", acontoCombinedToDate);
+
+  const ytdHotVol = complete.reduce((a,m)=>a+m.hotVol,0) + novHotSum;
+  const bdRadiator = ytdBilledHeatUnits*RATE_HEAT;
+  const bdHotWaterEnergy = ytdHotVol*RATE_HOTWATER_ENERGY;
+  const bdFixed = FIXED_PER_DAY*daysElapsedYTD;
+  const bdTotal = bdRadiator+bdHotWaterEnergy+bdFixed;
+  const bdSegs = [
+    {name:"Radiator heating", dkk:bdRadiator, color:"var(--heat)"},
+    {name:"Heating the water", dkk:bdHotWaterEnergy, color:"var(--hot)"},
+    {name:"Fixed base fee + EED", dkk:bdFixed, color:"var(--muted)"}
+  ];
+  document.getElementById("costBreakdown").innerHTML =
+    '<div class="bd-bar">'+bdSegs.map(s=>'<div class="bd-seg" style="width:'+(s.dkk/bdTotal*100)+'%;background:'+s.color+';"></div>').join("")+'</div>'+
+    '<div class="bd-legend">'+bdSegs.map(s=>'<div class="bd-row"><span class="bd-dot" style="background:'+s.color+'"></span>'+
+      '<span class="bd-name">'+s.name+'</span><span class="bd-pct">'+(s.dkk/bdTotal*100).toFixed(0)+'%</span>'+
+      '<span class="bd-dkk">'+s.dkk.toFixed(0)+' DKK</span></div>').join("")+'</div>';
+
+  document.getElementById("costLegend").innerHTML =
+    '<span><span class="kpi-dot" style="background:var(--heat);display:inline-block;margin-right:5px;"></span>Heating energy</span>'+
+    '<span><span class="kpi-dot" style="background:var(--hot);display:inline-block;margin-right:5px;"></span>Hot water (energy + supply)</span>'+
+    '<span><span class="kpi-dot" style="background:var(--cold);display:inline-block;margin-right:5px;"></span>Cold water (supply)</span>'+
+    '<span>Heating total also includes a '+FIXED_PER_DAY.toFixed(2)+' DKK/day base fee, not shown per-bar</span>';
+
+  document.getElementById("heatTotal").textContent = sum(heat).toFixed(0)+" units over "+heat.length+" days shown";
+  document.getElementById("hotTotal").textContent = fmt(sum(hot),2)+" m³ over "+hot.length+" days shown";
+  document.getElementById("coldTotal").textContent = fmt(sum(cold),2)+" m³ over "+cold.length+" days shown";
+
+  function renderChart(hostId, ttId, data, color, unit){
+    const host = document.getElementById(hostId);
+    const tt = document.getElementById(ttId);
+    host.innerHTML = "";
+    function draw(){
+      const width = host.clientWidth || 600, height = 150;
+      const margin = {top:10,right:10,bottom:20,left:36};
+      const svg = d3.select(host).append("svg").attr("width",width).attr("height",height).attr("viewBox","0 0 "+width+" "+height);
+      const x = d3.scaleBand().domain(data.map(d=>d[0])).range([margin.left,width-margin.right]).paddingInner(0.12);
+      const maxY = d3.max(data,d=>d[1]) || 1;
+      const y = d3.scaleLinear().domain([0,maxY*1.12]).range([height-margin.bottom,margin.top]);
+      svg.append("g").selectAll("line").data(y.ticks(3)).join("line")
+        .attr("x1",margin.left).attr("x2",width-margin.right).attr("y1",d=>y(d)).attr("y2",d=>y(d))
+        .attr("stroke","var(--line)").attr("stroke-width",1);
+      svg.append("g").selectAll("text").data(y.ticks(3)).join("text")
+        .attr("x",margin.left-6).attr("y",d=>y(d)+3).attr("text-anchor","end")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace").attr("fill","var(--muted)")
+        .text(d=>unit==="units"? d3.format("~s")(d): d.toFixed(2));
+      const tickEvery = Math.ceil(data.length/8);
+      svg.append("g").selectAll("text.x").data(data.filter((d,i)=>i%tickEvery===0)).join("text").attr("class","x")
+        .attr("x",d=>x(d[0])+x.bandwidth()/2).attr("y",height-4).attr("text-anchor","middle")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace").attr("fill","var(--muted)")
+        .text(d=>dayLabel(d[0]));
+      const bars = svg.append("g").selectAll("rect").data(data).join("rect")
+        .attr("x",d=>x(d[0])).attr("width",x.bandwidth()).attr("y",d=>y(d[1]))
+        .attr("height",d=>(height-margin.bottom)-y(d[1])).attr("rx",2).attr("fill",color)
+        .attr("opacity",d=>d[1]===0?0.25:0.95);
+      bars.on("mouseenter",function(event,d){
+        d3.select(this).attr("opacity",1);
+        tt.style.left = (x(d[0])+x.bandwidth()/2)+"px"; tt.style.top = y(d[1])+"px";
+        tt.textContent = dayLabel(d[0])+" — "+ (unit==="units"? d[1].toFixed(0)+" units" : d[1].toFixed(3)+" m³");
+        tt.style.opacity = 1;
+      }).on("mouseleave",function(event,d){
+        d3.select(this).attr("opacity", d[1]===0?0.25:0.95); tt.style.opacity = 0;
+      });
+    }
+    draw();
+    new ResizeObserver(()=>{ host.innerHTML=""; draw(); }).observe(host);
+  }
+
+  renderChart("chartHeat","ttHeat",heat,"var(--heat)","units");
+  renderChart("chartHot","ttHot",hot,"var(--hot)","m3");
+  renderChart("chartCold","ttCold",cold,"var(--cold)","m3");
+
+  const costDaily = heat.map((r,i)=>({
+    date:r[0], heat:r[1]*RATE_HEAT,
+    hot: hot[i][1]*(RATE_HOTWATER_ENERGY+RATE_WATER),
+    cold: cold[i][1]*RATE_WATER
+  }));
+  costDaily.forEach(d=>{ d.total = d.heat+d.hot+d.cold; });
+
+  function renderStackedCost(hostId, ttId, data){
+    const host = document.getElementById(hostId), tt = document.getElementById(ttId);
+    host.innerHTML = "";
+    function draw(){
+      const width = host.clientWidth || 600, height = 160;
+      const margin = {top:10,right:10,bottom:20,left:34};
+      const svg = d3.select(host).append("svg").attr("width",width).attr("height",height).attr("viewBox","0 0 "+width+" "+height);
+      const x = d3.scaleBand().domain(data.map(d=>d.date)).range([margin.left,width-margin.right]).paddingInner(0.12);
+      const maxY = d3.max(data,d=>d.total) || 1;
+      const y = d3.scaleLinear().domain([0,maxY*1.12]).range([height-margin.bottom,margin.top]);
+      svg.append("g").selectAll("line").data(y.ticks(3)).join("line")
+        .attr("x1",margin.left).attr("x2",width-margin.right).attr("y1",d=>y(d)).attr("y2",d=>y(d))
+        .attr("stroke","var(--line)").attr("stroke-width",1);
+      svg.append("g").selectAll("text").data(y.ticks(3)).join("text")
+        .attr("x",margin.left-6).attr("y",d=>y(d)+3).attr("text-anchor","end")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace").attr("fill","var(--muted)")
+        .text(d=>d.toFixed(0));
+      const tickEvery = Math.ceil(data.length/8);
+      svg.append("g").selectAll("text.x").data(data.filter((d,i)=>i%tickEvery===0)).join("text").attr("class","x")
+        .attr("x",d=>x(d.date)+x.bandwidth()/2).attr("y",height-4).attr("text-anchor","middle")
+        .attr("font-size","10px").attr("font-family","IBM Plex Mono, monospace").attr("fill","var(--muted)")
+        .text(d=>dayLabel(d.date));
+      const layers = [{key:"heat",color:"var(--heat)"},{key:"hot",color:"var(--hot)"},{key:"cold",color:"var(--cold)"}];
+      const groups = svg.append("g").selectAll("g").data(data).join("g").attr("transform",d=>"translate("+x(d.date)+",0)");
+      groups.each(function(d){
+        const g = d3.select(this); let cum = 0;
+        layers.forEach(layer=>{
+          const v = d[layer.key];
+          const h = (height-margin.bottom)-y(v);
+          g.append("rect").attr("x",0).attr("width",x.bandwidth()).attr("y",y(cum+v))
+            .attr("height",Math.max(0,h)).attr("fill",layer.color).attr("opacity",d.total===0?0.2:0.95);
+          cum += v;
+        });
+      });
+      groups.on("mouseenter",function(event,d){
+        d3.select(this).selectAll("rect").attr("opacity",1);
+        tt.style.left = (x(d.date)+x.bandwidth()/2)+"px"; tt.style.top = y(d.total)+"px";
+        tt.textContent = dayLabel(d.date)+" — "+d.total.toFixed(1)+" DKK";
+        tt.style.opacity = 1;
+      }).on("mouseleave",function(event,d){
+        d3.select(this).selectAll("rect").attr("opacity",d.total===0?0.2:0.95); tt.style.opacity = 0;
+      });
+    }
+    draw();
+    new ResizeObserver(()=>{ host.innerHTML=""; draw(); }).observe(host);
+  }
+  renderStackedCost("chartCost","ttCost",costDaily);
+
+  const maxMonth = Math.max(...yearMonths.map(m=>m.heatUnits)) || 1;
+  document.getElementById("monthsPanelTotal").textContent = "No radiator reduction applied, last two months projected";
+  document.getElementById("monthsRow").innerHTML = yearMonths.map(m=>{
+    const actualV = m.toDateHeatUnits!==undefined ? m.toDateHeatUnits : (m.complete? m.heatUnits : 0);
+    const h = Math.max(actualV>0?3:0, (actualV/maxMonth)*120);
+    const ph = !m.complete ? Math.max(4,((m.heatUnits-actualV)/maxMonth)*120) : 0;
+    return '<div class="month-col"><div style="display:flex;flex-direction:column-reverse;width:100%;align-items:center;">'+
+      (ph? '<div class="bar partial" style="height:'+ph+'px;max-width:46px"></div>':'')+
+      '<div class="bar" style="height:'+h+'px"></div></div>'+
+      '<div class="month-val">'+actualV.toFixed(0)+(!m.complete? ' → ~'+m.heatUnits.toFixed(0):'')+'</div>'+
+      '<div class="month-name">'+m.name+'</div></div>';
+  }).join("");
+
+  const totalHeatCost = yearMonths.reduce((a,m)=>a+m.heatCost,0);
+  const totalWaterCost = yearMonths.reduce((a,m)=>a+m.waterCost,0);
+  const totalHeatDiff = totalHeatCost - ACONTO_HEAT*12;
+  const totalWaterDiff = totalWaterCost - ACONTO_WATER*12;
+
+  const accScale = Math.max(...yearMonths.concat([{heatDiff:totalHeatDiff,waterDiff:totalWaterDiff}])
+    .flatMap(m=>[Math.abs(m.heatDiff),Math.abs(m.waterDiff)])) * 1.15 || 100;
+
+  function diffVal(diff){ return '<span class="acc-val"><span class="'+(diff>=0?'u':'d')+'">'+(diff>=0?'+':'')+diff.toFixed(0)+' DKK</span></span>'; }
+  function barFill(diff){
+    const pct = Math.min(50, (Math.abs(diff)/accScale)*50);
+    const color = diff>=0 ? 'var(--warn)' : 'var(--money)';
+    const left = diff>=0 ? '50%' : (50-pct)+'%';
+    return '<div class="acc-fill" style="left:'+left+';width:'+pct+'%;background:'+color+';"></div>';
+  }
+  function accRow(name, sub, heatDiff, waterDiff, extraClass){
+    return '<div class="acc-row '+(extraClass||'')+'"><div class="acc-month">'+name+(sub?'<small>'+sub+'</small>':'')+'</div>'+
+      '<div class="acc-bars"><div class="acc-label">Heating + hot water + base fee '+diffVal(heatDiff)+'</div>'+
+      '<div class="acc-track"><div class="acc-zero"></div>'+barFill(heatDiff)+'</div>'+
+      '<div class="acc-label" style="margin-top:4px;">Water supply (hot + cold) '+diffVal(waterDiff)+'</div>'+
+      '<div class="acc-track"><div class="acc-zero"></div>'+barFill(waterDiff)+'</div></div><div></div></div>';
+  }
+
+  document.getElementById("acontoPanelTotal").textContent = "All of 2026 · "+ACONTO_HEAT+" DKK/mo heating + "+ACONTO_WATER+" DKK/mo water";
+  document.getElementById("acontoRows").innerHTML =
+    yearMonths.map(m => accRow(m.name, m.complete?"actual":(m.toDateHeatUnits!==undefined?"to date → projected":"projected"), m.heatDiff, m.waterDiff)).join("") +
+    accRow("Total","Jan–Dec 2026", totalHeatDiff, totalWaterDiff, "acc-total");
+
+  const heatWord = totalHeatDiff>=0 ? "owe an extra" : "get back";
+  const waterWord = totalWaterDiff>=0 ? "owe an extra" : "get back";
+  document.getElementById("acontoNote").innerHTML =
+    'Projected full-year settlement: you’d <b style="color:'+(totalHeatDiff>=0?'var(--warn)':'var(--money)')+'">'+heatWord+' '+Math.abs(totalHeatDiff).toFixed(0)+' DKK on heating</b> and '+
+    '<b style="color:'+(totalWaterDiff>=0?'var(--warn)':'var(--money)')+'">'+waterWord+' '+Math.abs(totalWaterDiff).toFixed(0)+' DKK on water</b> for all of 2026, on top of the '+(ACONTO_HEAT*12+ACONTO_WATER*12).toFixed(0)+' DKK already paid in acconto. '+
+    'These figures don’t include the bedroom radiator’s promised 20% reduction, which isn’t confirmed yet.';
+
+  const actualCombinedToDate = ytdHeatCost + ytdWaterCost;
+  const dailyCostAtNovPace = novDailyHeatUnits*RATE_HEAT + novDailyHotVol*(RATE_HOTWATER_ENERGY+RATE_WATER) + novDailyColdVol*RATE_WATER + FIXED_PER_DAY;
+
+  function monthCrossing(threshold){
+    let cum = 0, prevCum = 0;
+    for(let i=0;i<yearMonths.length;i++){
+      const m = yearMonths[i];
+      const monthDiff = m.heatDiff+m.waterDiff;
+      prevCum = cum; cum += monthDiff;
+      if(cum >= threshold) return {monthIndex:i, name:m.name};
+    }
+    return null;
+  }
+
+  function renderBudget(threshold){
+    const acontoFullYear = (ACONTO_HEAT+ACONTO_WATER)*12;
+    const currentDiff = actualCombinedToDate - acontoCombinedToDate;
+    const targetMaxSpend = acontoFullYear + threshold;
+    const remainingBudget = targetMaxSpend - actualCombinedToDate;
+    const alreadyOverThreshold = currentDiff >= threshold;
+
+    const remainingFixed = FIXED_PER_DAY*daysRemaining;
+    const remainingWaterVol = (novDailyHotVol+novDailyColdVol)*daysRemaining*RATE_WATER;
+    const remainingHotEnergy = novDailyHotVol*daysRemaining*RATE_HOTWATER_ENERGY;
+    const remainingHeatBudget = remainingBudget - remainingFixed - remainingWaterVol - remainingHotEnergy;
+    const remainingHeatUnits = Math.max(0, remainingHeatBudget/RATE_HEAT);
+    const remainingHeatUnitsPerDay = daysRemaining>0 ? remainingHeatUnits/daysRemaining : 0;
+
+    document.getElementById("budgetKpiRow").innerHTML =
+      kpi("Current position","var(--money)", (currentDiff>=0?"+":"")+currentDiff.toFixed(0), "DKK vs acconto") +
+      kpi(alreadyOverThreshold?"Already past threshold by":"Remaining headroom","var(--money)", (alreadyOverThreshold? "+"+(currentDiff-threshold).toFixed(0) : remainingBudget.toFixed(0)), "DKK"+(alreadyOverThreshold?"":", to year end")) +
+      kpi("Heating units left","var(--heat)", remainingHeatUnits.toFixed(0), "units ("+remainingHeatUnitsPerDay.toFixed(1)+"/day)");
+
+    const pct = Math.max(0, Math.min(100, (actualCombinedToDate/targetMaxSpend)*100));
+    document.getElementById("budgetFill").style.width = pct+"%";
+    document.getElementById("budgetMarker").style.left = ((acontoFullYear/targetMaxSpend)*100)+"%";
+    document.getElementById("budgetScaleEnd").textContent = targetMaxSpend.toFixed(0)+" DKK (threshold)";
+
+    let note;
+    if(alreadyOverThreshold){
+      const cross = monthCrossing(threshold);
+      const whenTxt = cross ? "around "+cross.name+" 2026" : "earlier this year";
+      note = '<span>&#9888;&#65039;</span><div>You’re already <b>'+(currentDiff-threshold).toFixed(0)+' DKK past</b> the '+threshold+' DKK threshold — crossed '+whenTxt+'. The heating-units figure above is the year-end allowance implied by the threshold, not a safe amount still available to spend.</div>';
+    } else {
+      note = '<span>&#9989;</span><div>At the current pace, you’re projected to stay under the threshold, with about <b>'+remainingBudget.toFixed(0)+' DKK</b> of headroom left — roughly <b>'+remainingHeatUnits.toFixed(0)+' more heating units</b> (~'+remainingHeatUnitsPerDay.toFixed(1)+'/day).</div>';
+    }
+    document.getElementById("budgetNote").innerHTML = note;
+  }
+
+  renderBudget(2000);
+  document.getElementById("thresholdInput").addEventListener("input", e=>{
+    const v = parseFloat(e.target.value);
+    if(!isNaN(v) && v>=0) renderBudget(v);
+  });
+
+  document.getElementById("footerSource").textContent = "Source: Techem portal, synced into Supabase. Monthly totals for completed months, daily resolution for the most recent window.";
+  document.getElementById("footerRates").textContent =
+    "Cost rates: "+RATE_HEAT+" DKK/HCA unit, "+RATE_HOTWATER_ENERGY+" DKK/m³ hot-water energy, "+RATE_WATER+" DKK/m³ water supply, "+(FIXED_PER_DAY*365).toFixed(2)+" DKK/year fixed base fee + EED.";
+}
+</script>
+</body>
+</html>
