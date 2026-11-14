@@ -86,8 +86,6 @@ h1{font-size:clamp(24px,4vw,34px);font-weight:800;margin:0;text-wrap:balance;let
 .bar.partial{background-image:repeating-linear-gradient(135deg, var(--heat) 0 6px, var(--heat-soft) 6px 12px);}
 .month-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-variant-numeric:tabular-nums;}
 .month-name{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
-.bar-stack{display:flex;flex-direction:column-reverse;width:100%;max-width:46px;border-radius:5px 5px 2px 2px;overflow:hidden;}
-.bar-seg{width:100%;}
 
 .acc-row{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);}
 .acc-row:last-child{border-bottom:none;}
@@ -109,6 +107,7 @@ h1{font-size:clamp(24px,4vw,34px);font-weight:800;margin:0;text-wrap:balance;let
 .budget-input-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .budget-input-row label{font-size:13px;color:var(--muted);}
 .budget-input-row input{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;width:100px;}
+.budget-input-row select{font-family:'Archivo',sans-serif;font-size:14px;font-weight:600;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;}
 .budget-bar-wrap{margin-top:16px;}
 .budget-track{position:relative;height:16px;background:var(--line);border-radius:8px;overflow:hidden;}
 .budget-fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:var(--money);}
@@ -219,10 +218,13 @@ footer{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:
   <div class="panel">
     <div class="panel-head">
       <div class="panel-title">Usage by room &mdash; raw HCA units</div>
-      <div class="panel-total">2026 &middot; per-radiator, not cost-adjusted</div>
+      <div class="panel-total">Per-radiator, not cost-adjusted</div>
     </div>
-    <div class="months" id="roomsRow"></div>
-    <div id="roomsLegend" style="display:flex;gap:16px;margin:10px 2px 4px;font-size:12px;color:var(--muted);flex-wrap:wrap;"></div>
+    <div class="budget-input-row">
+      <label for="roomMonthSelect">Month</label>
+      <select id="roomMonthSelect"></select>
+    </div>
+    <div class="months" id="roomsRow" style="gap:28px;"></div>
   </div>
 
   <div class="panel">
@@ -651,10 +653,10 @@ function renderDashboard(data){
       '<div class="month-name">'+m.name+'</div></div>';
   }).join("");
 
-  // ---- usage by room, raw HCA units, stacked monthly bars ----
+  // ---- usage by room, raw HCA units — one month at a time, 4 plain bars ----
   const ROOM_COLORS = {bedroom:"var(--heat)", kitchen:"var(--r-kitchen)", living_room:"var(--r-living)", dining_room:"var(--r-dining)"};
   const ROOM_LABELS = {bedroom:"Bedroom", kitchen:"Kitchen", living_room:"Living room", dining_room:"Dining room"};
-  const ROOM_ORDER = ["dining_room","living_room","kitchen","bedroom"]; // stacked bottom-to-top
+  const ROOM_ORDER = ["bedroom","kitchen","living_room","dining_room"];
 
   const roomsByMonthKey = {};
   data.rooms.forEach(r=>{
@@ -663,26 +665,30 @@ function renderDashboard(data){
     roomsByMonthKey[key][r.room] = Number(r.units);
   });
   const roomMonthKeys = Object.keys(roomsByMonthKey).sort();
-  const roomMonthTotals = roomMonthKeys.map(k=>ROOM_ORDER.reduce((a,r)=>a+(roomsByMonthKey[k][r]||0),0));
-  const maxRoomMonth = Math.max(...roomMonthTotals) || 1;
 
-  document.getElementById("roomsRow").innerHTML = roomMonthKeys.map((k,i)=>{
-    const vals = roomsByMonthKey[k];
-    const total = roomMonthTotals[i];
-    const segs = ROOM_ORDER.map(r=>{
+  function monthKeyLabel(k){
+    return MONTH_NAMES[parseInt(k.slice(5,7),10)-1] + " " + k.slice(0,4);
+  }
+
+  function renderRoomsForMonth(key){
+    const vals = roomsByMonthKey[key] || {};
+    const maxVal = Math.max(...ROOM_ORDER.map(r=>vals[r]||0)) || 1;
+    document.getElementById("roomsRow").innerHTML = ROOM_ORDER.map(r=>{
       const v = vals[r]||0;
-      const h = v>0 ? Math.max(2,(v/maxRoomMonth)*120) : 0;
-      return h>0 ? '<div class="bar-seg" style="height:'+h+'px;background:'+ROOM_COLORS[r]+';"></div>' : '';
+      const h = Math.max(v>0?3:0, (v/maxVal)*140);
+      return '<div class="month-col">'+
+        '<div class="bar" style="height:'+h+'px;max-width:72px;background:'+ROOM_COLORS[r]+';"></div>'+
+        '<div class="month-val">'+v.toFixed(0)+'</div>'+
+        '<div class="month-name">'+ROOM_LABELS[r]+'</div></div>';
     }).join("");
-    const mName = MONTH_NAMES[parseInt(k.slice(5,7),10)-1];
-    return '<div class="month-col"><div class="bar-stack">'+segs+'</div>'+
-      '<div class="month-val">'+total.toFixed(0)+'</div>'+
-      '<div class="month-name">'+mName+'</div></div>';
-  }).join("");
+  }
 
-  document.getElementById("roomsLegend").innerHTML = ROOM_ORDER.map(r=>
-    '<span><span class="kpi-dot" style="background:'+ROOM_COLORS[r]+';display:inline-block;margin-right:5px;"></span>'+ROOM_LABELS[r]+'</span>'
-  ).join("");
+  const roomSelect = document.getElementById("roomMonthSelect");
+  roomSelect.innerHTML = roomMonthKeys.map(k=>'<option value="'+k+'">'+monthKeyLabel(k)+'</option>').join("");
+  const latestRoomKey = roomMonthKeys[roomMonthKeys.length-1];
+  roomSelect.value = latestRoomKey;
+  renderRoomsForMonth(latestRoomKey);
+  roomSelect.addEventListener("change", e=>renderRoomsForMonth(e.target.value));
 
   const totalHeatCost = yearMonths.reduce((a,m)=>a+m.heatCost,0);
   const totalWaterCost = yearMonths.reduce((a,m)=>a+m.waterCost,0);
